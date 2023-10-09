@@ -408,11 +408,31 @@ func (cr *containerReference) create(capAdd []string, capDrop []string) common.E
 
 		mounts := make([]mount.Mount, 0)
 		for mountSource, mountTarget := range input.Mounts {
-			mounts = append(mounts, mount.Mount{
-				Type:   mount.TypeVolume,
-				Source: mountSource,
-				Target: mountTarget,
-			})
+			var newMount mount.Mount
+			if mountSource == input.Name {
+				newMount = mount.Mount{
+					Type:   mount.TypeVolume,
+					Source: mountSource,
+					Target: mountTarget,
+					VolumeOptions: &mount.VolumeOptions{
+						DriverConfig: &mount.Driver{
+							Name: "local",
+							Options: map[string]string{
+								"type":   "tmpfs",
+								"o":      "size=3g",
+								"device": "tmpfs",
+							},
+						},
+					},
+				}
+			} else {
+				newMount = mount.Mount{
+					Type:   mount.TypeVolume,
+					Source: mountSource,
+					Target: mountTarget,
+				}
+			}
+			mounts = append(mounts, newMount)
 		}
 
 		var platSpecs *specs.Platform
