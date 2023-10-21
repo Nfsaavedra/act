@@ -1,8 +1,12 @@
 package runner
 
 import (
+	"archive/tar"
 	"context"
 	"fmt"
+	"io"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/nektos/act/pkg/common"
@@ -94,7 +98,41 @@ func newJobExecutor(info jobInfo, sf stepFactory, rc *RunContext) common.Executo
 		}
 	}
 
-	postExecutor = postExecutor.Finally(func(ctx context.Context) error {
+	postExecutor = postExecutor.Then(func(ctx context.Context) error {
+		rtar, err := rc.JobContainer.GetContainerArchive(ctx, rc.Config.Workdir)
+		if err != nil {
+			return err
+		}
+		defer rtar.Close()
+		tr := tar.NewReader(rtar)
+
+		var b []byte
+		// TODO add parameter to change this
+		act_folder := filepath.Join(rc.Config.Workdir, ".act-result")
+		os.RemoveAll(act_folder)
+		for {
+			hdr, err := tr.Next()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				break
+			}
+
+			b, err = io.ReadAll(tr)
+			path := filepath.Join(act_folder, hdr.Name)
+			if hdr.Typeflag == tar.TypeReg {
+				err = os.WriteFile(path, b, os.ModePerm)
+			} else if hdr.Typeflag == tar.TypeDir {
+				err = os.MkdirAll(path, os.ModePerm)
+			}
+
+			if err != nil {
+				break
+			}
+		}
+		return nil
+	}).IfBool(!rc.Config.BindWorkdir).Finally(func(ctx context.Context) error {
 		jobError := common.JobError(ctx)
 		var err error
 		if rc.Config.AutoRemove || jobError == nil {
