@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"runtime"
 
 	log "github.com/sirupsen/logrus"
 
@@ -45,6 +44,7 @@ type Config struct {
 	ContainerDaemonSocket              string                     // Path to Docker daemon socket
 	ContainerOptions                   string                     // Options for the job container
 	VolumeOptions                      string                     // Options for the job volume
+	MaxParallel                        int                        // maximum number of jobs to run in parallel
 	UseGitIgnore                       bool                       // controls if paths in .gitignore should not be copied into container, default true
 	GitHubInstance                     string                     // GitHub instance to use, default "github.com"
 	ContainerCapAdd                    []string                   // list of kernel capabilities to add to the containers
@@ -187,7 +187,7 @@ func (runner *runnerImpl) NewPlanExecutor(plan *model.Plan) common.Executor {
 				}
 				pipeline = append(pipeline, common.NewParallelExecutor(maxParallel, stageExecutor...))
 			}
-			ncpu := runtime.NumCPU()
+			ncpu := runner.config.MaxParallel
 			if 1 > ncpu {
 				ncpu = 1
 			}
