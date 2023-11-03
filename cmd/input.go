@@ -36,6 +36,7 @@ type Input struct {
 	containerDaemonSocket              string
 	containerOptions                   string
 	volumeOptions                      string
+	maxParallel                        int
 	noWorkflowRecurse                  bool
 	useGitIgnore                       bool
 	githubInstance                     string
