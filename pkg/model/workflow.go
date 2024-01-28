@@ -275,15 +275,39 @@ func (j *Job) Needs() []string {
 // RunsOn list for Job
 func (j *Job) RunsOn() []string {
 	switch j.RawRunsOn.Kind {
+	case yaml.MappingNode:
+		var val struct {
+			Group  string
+			Labels yaml.Node
+		}
+
+		if !decodeNode(j.RawRunsOn, &val) {
+			return nil
+		}
+
+		labels := nodeAsStringSlice(val.Labels)
+
+		if val.Group != "" {
+			labels = append(labels, val.Group)
+		}
+
+		return labels
+	default:
+		return nodeAsStringSlice(j.RawRunsOn)
+	}
+}
+
+func nodeAsStringSlice(node yaml.Node) []string {
+	switch node.Kind {
 	case yaml.ScalarNode:
 		var val string
-		if !decodeNode(j.RawRunsOn, &val) {
+		if !decodeNode(node, &val) {
 			return nil
 		}
 		return []string{val}
 	case yaml.SequenceNode:
 		var val []string
-		if !decodeNode(j.RawRunsOn, &val) {
+		if !decodeNode(node, &val) {
 			return nil
 		}
 		return val
@@ -445,14 +469,17 @@ func commonKeysMatch2(a map[string]interface{}, b map[string]interface{}, m map[
 type JobType int
 
 const (
-	// StepTypeRun is all steps that have a `run` attribute
+	// JobTypeDefault is all jobs that have a `run` attribute
 	JobTypeDefault JobType = iota
 
-	// StepTypeReusableWorkflowLocal is all steps that have a `uses` that is a local workflow in the .github/workflows directory
+	// JobTypeReusableWorkflowLocal is all jobs that have a `uses` that is a local workflow in the .github/workflows directory
 	JobTypeReusableWorkflowLocal
 
-	// JobTypeReusableWorkflowRemote is all steps that have a `uses` that references a workflow file in a github repo
+	// JobTypeReusableWorkflowRemote is all jobs that have a `uses` that references a workflow file in a github repo
 	JobTypeReusableWorkflowRemote
+
+	// JobTypeInvalid represents a job which is not configured correctly
+	JobTypeInvalid
 )
 
 func (j JobType) String() string {
@@ -468,13 +495,28 @@ func (j JobType) String() string {
 }
 
 // Type returns the type of the job
-func (j *Job) Type() JobType {
-	if strings.HasPrefix(j.Uses, "./.github/workflows") && (strings.HasSuffix(j.Uses, ".yml") || strings.HasSuffix(j.Uses, ".yaml")) {
-		return JobTypeReusableWorkflowLocal
-	} else if !strings.HasPrefix(j.Uses, "./") && strings.Contains(j.Uses, ".github/workflows") && (strings.Contains(j.Uses, ".yml@") || strings.Contains(j.Uses, ".yaml@")) {
-		return JobTypeReusableWorkflowRemote
+func (j *Job) Type() (JobType, error) {
+	isReusable := j.Uses != ""
+
+	if isReusable {
+		isYaml, _ := regexp.MatchString(`\.(ya?ml)(?:$|@)`, j.Uses)
+
+		if isYaml {
+			isLocalPath := strings.HasPrefix(j.Uses, "./")
+			isRemotePath, _ := regexp.MatchString(`^[^.](.+?/){2,}.+\.ya?ml@`, j.Uses)
+			hasVersion, _ := regexp.MatchString(`\.ya?ml@`, j.Uses)
+
+			if isLocalPath {
+				return JobTypeReusableWorkflowLocal, nil
+			} else if isRemotePath && hasVersion {
+				return JobTypeReusableWorkflowRemote, nil
+			}
+		}
+
+		return JobTypeInvalid, fmt.Errorf("`uses` key references invalid workflow path '%s'. Must start with './' if it's a local workflow, or must start with '<org>/<repo>/' and include an '@' if it's a remote workflow", j.Uses)
 	}
-	return JobTypeDefault
+
+	return JobTypeDefault, nil
 }
 
 // ContainerSpec is the specification of the container to use for the job
@@ -550,7 +592,7 @@ func (s *Step) ShellCommand() string {
 	case "sh":
 		shellCommand = "sh -e {0}"
 	case "cmd":
-		shellCommand = "%ComSpec% /D /E:ON /V:OFF /S /C \"CALL \"{0}\"\""
+		shellCommand = "cmd /D /E:ON /V:OFF /S /C \"CALL \"{0}\"\""
 	case "powershell":
 		shellCommand = "powershell -command . '{0}'"
 	default:

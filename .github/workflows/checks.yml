@@ -8,7 +8,6 @@ concurrency:
 env:
   ACT_OWNER: ${{ github.repository_owner }}
   ACT_REPOSITORY: ${{ github.repository }}
-  GO_VERSION: 1.18
   CGO_ENABLED: 0
 
 jobs:
@@ -16,17 +15,18 @@ jobs:
     name: lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: actions/setup-go@v4
+      - uses: actions/setup-go@v5
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version-file: go.mod
           check-latest: true
-      - uses: golangci/golangci-lint-action@v3.5.0
+      - uses: golangci/golangci-lint-action@v3.7.0
         with:
-          version: v1.47.2
-      - uses: megalinter/megalinter/flavors/go@v7.1.0
+          version: v1.53
+          only-new-issues: true
+      - uses: megalinter/megalinter/flavors/go@v7.7.0
         env:
           DEFAULT_BRANCH: master
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -38,14 +38,14 @@ jobs:
     name: test-linux
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 2
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v2
-      - uses: actions/setup-go@v4
+        uses: docker/setup-qemu-action@v3
+      - uses: actions/setup-go@v5
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version-file: go.mod
           check-latest: true
       - uses: actions/cache@v3
         if: ${{ !env.ACT }}
@@ -75,12 +75,12 @@ jobs:
     name: test-${{matrix.os}}
     runs-on: ${{matrix.os}}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 2
-      - uses: actions/setup-go@v4
+      - uses: actions/setup-go@v5
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version-file: go.mod
           check-latest: true
       - name: Run Tests
         uses: ./.github/actions/run-tests
@@ -92,10 +92,10 @@ jobs:
     name: snapshot
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-go@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version-file: go.mod
           check-latest: true
       - uses: actions/cache@v3
         if: ${{ !env.ACT }}
@@ -105,10 +105,10 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-go-
       - name: GoReleaser
-        uses: goreleaser/goreleaser-action@v4
+        uses: goreleaser/goreleaser-action@v5
         with:
           version: latest
-          args: release --snapshot --rm-dist
+          args: release --snapshot --clean
       - name: Capture x86_64 (64-bit) Linux binary
         if: ${{ !env.ACT }}
         uses: actions/upload-artifact@v3
